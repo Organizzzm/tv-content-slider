@@ -1,0 +1,30 @@
+#slider {
+    position: relative;
+    width: 1024px;
+    height: 768px;
+    background: #e5e5e5;
+    overflow: hidden;
+}
+
+.item {
+    display: inline-block;
+}
+
+.scroll {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+}
+
+.row {
+    position: absolute;
+}
+
+.frame {
+    position: absolute;
+    left: 0;
+    border: 10px solid #ef8585;
+    box-sizing: border-box;
+    z-index: 1;
+}
