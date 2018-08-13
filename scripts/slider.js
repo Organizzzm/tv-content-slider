@@ -9,6 +9,7 @@ var Slider = (function (window, Animator) {
         this.rowsLength = 0;
         this.currentItem = 0;
         this.currentRow = 0;
+        this.astScrollTop = 0;
         this.isFrameAnimationInProgress = false;
         this.isTop = true;
         this.isBottom = false;
@@ -58,10 +59,11 @@ var Slider = (function (window, Animator) {
 
     Slider.prototype.bindEvents = function () {
         this.window.addEventListener('keydown', this.proxy(this.keydownController, this));
+        this.window.addEventListener('keydown', this.proxy(this.keydownController, this));
+        this.window.addEventListener('scroll', this.proxy(this.scrollController, this));
     };
 
     Slider.prototype.keydownController = function (event) {
-        console.log(event.keyCode);
         switch (event.keyCode) {
             case 37 :
                 this.moveFrameToLeft();
@@ -76,6 +78,10 @@ var Slider = (function (window, Animator) {
                 this.scrollDown();
                 break;
         }
+    };
+
+    Slider.prototype.scrollController = function (event) {
+
     };
 
     Slider.prototype.scrollUp = function () {
