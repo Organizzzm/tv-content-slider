@@ -11,10 +11,10 @@ function lazy(page) {
         length;
 
     switch (page) {
-        case 0:
+        case 1:
             data = imagesRequest(1, 50);
             break;
-        case 1:
+        case 2:
             data = imagesRequest(2, 40);
             break;
         default:

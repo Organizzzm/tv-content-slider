@@ -4,17 +4,18 @@ var Slider = (function (window, Animator) {
         this.options = options;
         this.lazy = options.lazy;
         this.buffer = [];
-        this.page = 0;
-        this.rowsNumber = 2;
+        this.page = 1;
+        this.rowsNumber = 3;
+        this.rowsOffset = 2;
         this.rowsLength = 0;
         this.currentItem = 0;
-        this.currentRow = 0;
-        this.astScrollTop = 0;
+        this.currentRow = 1;
         this.isFrameAnimationInProgress = false;
-        this.isTop = true;
-        this.isBottom = false;
+        this.endPage = false;
+        this.startPage = true;
         this.animator = new Animator();
         this.window = window;
+
         this.start();
     }
 
@@ -24,41 +25,41 @@ var Slider = (function (window, Animator) {
     };
 
     Slider.prototype.initRowAndItems = function () {
-        this.append(this.scrollBlock, this.addMiddleEmptyRow());
-
         for (var i = 0; i < this.rowsNumber; i++) {
-            var itemsTemplate = '',
-                position = i * this.options.itemsCount,
-                length = position + this.options.itemsCount;
-
-            for (position; position < length; position++) {
-                itemsTemplate += this.createItemTemplate(this.options.itemTemplate(this.buffer[position]));
+            if (i === 0) {
+                this.append(this.scrollBlock, this.addEmptyRowWithPosition(100 * i));
+                continue;
             }
 
-            var row = this.addCalculatedEmptyRow(100 * (i + 1));
-            row.innerHTML = itemsTemplate;
+            var itemsList = '',
+                firstItemNumber = i * this.options.itemsCount,
+                lastItemNumber = firstItemNumber + this.options.itemsCount,
+                row;
 
+            for (var j = firstItemNumber; j < lastItemNumber; j++) {
+                itemsList += this.createItemTemplate(this.options.itemTemplate(this.buffer[j]));
+            }
+
+            row = this.addEmptyRowWithPosition(100 * i);
+            row.innerHTML = itemsList;
             this.append(this.scrollBlock, row);
         }
-
-        this.scrollBlock.style.opacity = 1;
     };
 
     Slider.prototype.getData = function () {
-        this.buffer = this.lazy(this.page);
+        this.buffer = this.lazy(this.pageNumber());
     };
 
     Slider.prototype.initElements = function () {
         this.initContainer();
-        this.getElementsSize();
-        this.initFrame();
         this.initScrollBlock();
+        this.initElementsSize();
+        this.initFrame();
         this.initRowAndItems();
         this.bindEvents();
     };
 
     Slider.prototype.bindEvents = function () {
-        this.window.addEventListener('keydown', this.proxy(this.keydownController, this));
         this.window.addEventListener('keydown', this.proxy(this.keydownController, this));
         this.window.addEventListener('scroll', this.proxy(this.scrollController, this));
     };
@@ -85,117 +86,119 @@ var Slider = (function (window, Animator) {
     };
 
     Slider.prototype.scrollUp = function () {
-        var self = this;
-        if (self.isFrameAnimationInProgress) return;
+        if (this.isAnimating()) return;
 
-        if (this.currentRow - 1 > 0) {
-            self.isFrameAnimationInProgress = true;
-            self.addTopRow();
-
-            this.animator.start(0, 100,
-                function (progress) {
-                    self.scrollTransformAnimation(progress, true);
-                },
-                function () {
-                    self.isFrameAnimationInProgress = false;
-                    self.currentRow--;
-                    self.isBottom = false;
-                    self.removeBottomRow();
-                }
-            );
-        } else if (!this.isTop) {
-            self.isTop = true;
-
-            this.prepend(this.scrollBlock, this.addTopEmptyRow());
-            self.isFrameAnimationInProgress = true;
-
-            this.animator.start(0, 100,
-                function (progress) {
-                    self.scrollTransformAnimation(progress, true);
-                },
-                function () {
-                    self.isFrameAnimationInProgress = false;
-                    self.currentRow--;
-                    self.removeBottomRow();
-                }
-            );
+        if (this.isTop()) {
+            this.prependItemsToBuffer()? this.scrollUp() : this.topOffsetAnimation();
+            return;
         }
+
+        if (this.endPage) {
+            this.decrementPage();
+        }
+
+        this.addTopRow();
+        this.startAnimation();
+
+        this.animator.start(0, 100,
+            this.proxy(this.scrollUpAnimator, this),
+            this.proxy(this.afterScrollUpHandler, this)
+        );
     };
 
     Slider.prototype.scrollDown = function () {
-        if (this.isFrameAnimationInProgress) return;
+        if (this.isAnimating()) return;
 
-        if (this.currentRow + 2 < this.rowsLength) {
-            var self = this;
-            self.isFrameAnimationInProgress = true;
-            self.addBottomRow();
-
-            self.animator.start(0, 100,
-                function (progress) {
-                    self.scrollTransformAnimation(progress);
-                },
-                function () {
-                    self.isFrameAnimationInProgress = false;
-                    self.currentRow++;
-                    self.isTop = false;
-                    self.removeTopRow();
-                }
-            );
-        } else if (!this.isBottom) {
-            var newItems = this.options.lazy(++this.page);
-            this.addItemsToBuffer(newItems, this.proxy(this.addItemsToBufferHandler, this));
+        if (this.isBottom()) {
+            this.appendItemsToBuffer()? this.scrollDown() : this.bottomOffsetAnimation();
+            return;
         }
+
+        this.addBottomRow();
+        this.startAnimation();
+
+        this.animator.start(0, 100,
+            this.proxy(this.scrollDownAnimator, this),
+            this.proxy(this.afterScrollDownHandler, this)
+        );
+
     };
 
-    Slider.prototype.addItemsToBuffer = function (array, callback) {
-        if (array.length) {
-            this.buffer = this.buffer.concat(array);
-            this.getRowLength();
-            callback({error: false});
+    Slider.prototype.appendItemsToBuffer = function () {
+        this.incrementPage();
+        var data = this.options.lazy(this.pageNumber());
+
+        if (data.length === 0) {
+            this.endPage = true;
+            return false
         }
-        else callback({error: true});
+
+        this.appendBuffer(data);
+
+        return true;
     };
 
-    Slider.prototype.addItemsToBufferHandler = function (res) {
-        var self = this;
-
-        if (res.error) {
-            this.isBottom = true;
-            self.append(self.scrollBlock, this.addBottomEmptyRow());
-            self.isFrameAnimationInProgress = true;
-
-            self.animator.start(0, 100,
-                function (progress) {
-                    self.scrollTransformAnimation(progress);
-                },
-                function () {
-                    self.isFrameAnimationInProgress = false;
-                    self.currentRow++;
-                    self.removeTopRow();
-                }
-            );
-        } else {
-            self.addBottomRow();
-            self.isFrameAnimationInProgress = true;
-
-            self.animator.start(0, 100,
-                function (progress) {
-                    self.scrollTransformAnimation(progress);
-                },
-                function () {
-                    self.isFrameAnimationInProgress = false;
-                    self.currentRow++;
-                    self.removeTopRow();
-                }
-            );
+    Slider.prototype.prependItemsToBuffer = function () {
+        if (this.isStartPage()) {
+            return false;
         }
+
+        this.decrementPage();
+        this.prependBuffer(this.options.lazy(this.pageNumber()));
+        return true;
     };
 
-    Slider.prototype.scrollTransformAnimation = function (progress, isIncrement) {
+    Slider.prototype.scrollUpAnimator = function (progress) {
         var length = this.scrollBlock.children.length;
 
         for (var i = 0; i < length; i++) {
-            this.scrollBlock.children[i].style.transform = 'translateY(' + ( isIncrement ? (i * 100 - 100 + progress) : (i * 100 - progress) ) + '%)';
+            this.scrollBlock.children[i].style.transform = 'translateY(' + (i * 100 - 100 + progress) + '%)';
+        }
+    };
+
+    Slider.prototype.topOffsetAnimation = function () {
+        if (this.scrollBlock.children[0].children.length) {
+            var row = this.addEmptyRowWithPosition(0);
+            this.prepend(this.scrollBlock, row);
+            this.startAnimation();
+
+            this.animator.start(0, 100,
+                this.proxy(this.scrollUpAnimator, this),
+                this.proxy(this.afterTopOffsetAnimation, this)
+            );
+        }
+    };
+
+    Slider.prototype.afterTopOffsetAnimation = function () {
+        this.currentRow = 1;
+        this.removeBottomRow();
+        this.stopAnimation();
+    };
+
+    Slider.prototype.bottomOffsetAnimation = function () {
+        if (this.scrollBlock.children[this.rowsOffset].children.length) {
+            var row = this.addEmptyRowWithPosition(0);
+            this.append(this.scrollBlock, row);
+            this.startAnimation();
+
+            this.animator.start(0, 100,
+                this.proxy(this.scrollDownAnimator, this),
+                this.proxy(this.afterBottomOffsetAnimation, this)
+            );
+        }
+    };
+
+    Slider.prototype.afterBottomOffsetAnimation = function () {
+        this.currentRow = this.rowsLength - 1;
+        this.removeTopRow();
+        this.stopAnimation();
+    };
+
+    Slider.prototype.scrollDownAnimator = function (progress) {
+        var length = this.scrollBlock.children.length;
+
+        for (var i = 0; i < length; i++) {
+            this.scrollBlock.children[i].style.transform = 'translateY(' + (i * 100 - progress) + '%)';
         }
     };
 
@@ -208,17 +211,17 @@ var Slider = (function (window, Animator) {
     };
 
     Slider.prototype.addBottomRow = function () {
-        var startPosition = (this.currentRow + 2) * this.options.itemsCount,
+        var startPosition = (this.currentRow + this.rowsOffset) * this.options.itemsCount,
             length = startPosition + this.options.itemsCount,
             row = this.addRowNode(),
             itemsTemplate = '';
 
         for (var i = startPosition; i < length; i++) {
-            itemsTemplate += this.createItemTemplate(this.options.itemTemplate(this.buffer[i]));
+            itemsTemplate += this.buffer[i] ? this.createItemTemplate(this.options.itemTemplate(this.buffer[i])) : '';
         }
 
         row.innerHTML = itemsTemplate;
-        row.style.transform = 'translateY(' + 100 * (this.currentRow + 2) + '%)';
+        row.style.transform = 'translateY(' + 100 * (this.currentRow + this.rowsOffset) + '%)';
         this.append(this.scrollBlock, row);
     };
 
@@ -240,6 +243,18 @@ var Slider = (function (window, Animator) {
         row.innerHTML = itemsTemplate;
         row.style.transform = 'translateY(-100%)';
         this.prepend(this.scrollBlock, row);
+    };
+
+    Slider.prototype.afterScrollDownHandler = function () {
+        this.stopAnimation();
+        this.currentRow++;
+        this.removeTopRow();
+    };
+
+    Slider.prototype.afterScrollUpHandler = function () {
+        this.stopAnimation();
+        this.currentRow--;
+        this.removeBottomRow();
     };
 
     Slider.prototype.moveFrameToLeft = function () {
@@ -285,16 +300,16 @@ var Slider = (function (window, Animator) {
         this.container = document.querySelector(this.selector);
     };
 
-    Slider.prototype.getElementsSize = function () {
-        this.rowHeight = this.container.clientHeight / this.rowsNumber;
-        this.itemWidth = this.container.clientWidth / this.options.itemsCount;
+    Slider.prototype.initElementsSize = function () {
+        this.rowHeight = this.scrollBlock.clientHeight / this.rowsNumber;
+        this.itemWidth = this.scrollBlock.clientWidth / this.options.itemsCount;
         this.itemHeight = this.rowHeight;
         this.scrollShift = this.rowHeight / 2;
         this.getRowLength();
     };
 
     Slider.prototype.getRowLength = function () {
-        this.rowsLength = ~~(this.buffer.length / this.options.itemsCount);
+        this.rowsLength = this.buffer.length / this.options.itemsCount;
     };
 
     Slider.prototype.initScrollBlock = function () {
@@ -328,8 +343,6 @@ var Slider = (function (window, Animator) {
     Slider.prototype.addScrollBlock = function () {
         var node = this.addDiv();
         node.className = 'scroll';
-        node.style.height = this.container.clientHeight + 'px';
-        node.style.top = -this.scrollShift + 'px';
         return node;
     };
 
@@ -345,36 +358,69 @@ var Slider = (function (window, Animator) {
         return row;
     };
 
-    Slider.prototype.addTopEmptyRow = function () {
+    Slider.prototype.addEmptyRowWithPosition = function (value) {
         var row = this.addRowNode();
-        row.style.transform = 'translateY(-100%)';
-
-        return row;
-    };
-
-    Slider.prototype.addBottomEmptyRow = function () {
-        var row = this.addRowNode();
-        row.style.transform = 'translateY(200%)';
-
-        return row;
-    };
-
-    Slider.prototype.addMiddleEmptyRow = function () {
-        var row = this.addRowNode();
-        row.style.transform = 'translateY(0%)';
-
-        return row;
-    };
-
-    Slider.prototype.addCalculatedEmptyRow = function (expression) {
-        var row = this.addRowNode();
-        row.style.transform = 'translateY(' + expression + '%)';
+        row.style.transform = 'translateY(' + value + '%)';
 
         return row;
     };
 
     Slider.prototype.createItemTemplate = function (template) {
         return '<div class="item" style="width:' + this.itemWidth + 'px; height:' + this.itemHeight + 'px">' + template + '</div>';
+    };
+
+    Slider.prototype.appendBuffer = function (data) {
+        var newBuffer = this.buffer.splice(-this.rowsOffset * this.options.itemsCount);
+        this.buffer = newBuffer.concat(data);
+        this.currentRow = 1;
+        this.getRowLength();
+    };
+
+    Slider.prototype.prependBuffer = function (data) {
+        var newBuffer = this.buffer.splice(0, this.rowsOffset * this.options.itemsCount);
+        this.buffer = data.concat(newBuffer);
+        this.currentRow = this.buffer.length / this.options.itemsCount - 1;
+        newBuffer = null;
+    };
+
+    Slider.prototype.isBottom = function () {
+        return (this.currentRow + this.rowsOffset) >= this.rowsLength;
+    };
+
+    Slider.prototype.isTop = function () {
+        return (this.currentRow - this.rowsOffset) <= 0;
+    };
+
+    Slider.prototype.startAnimation = function () {
+        this.isFrameAnimationInProgress = true;
+    };
+
+    Slider.prototype.stopAnimation = function () {
+        this.isFrameAnimationInProgress = false;
+    };
+
+    Slider.prototype.isAnimating = function () {
+        return this.isFrameAnimationInProgress;
+    };
+
+    Slider.prototype.isStartPage = function () {
+        return this.page === 1;
+    };
+
+    Slider.prototype.incrementPage = function () {
+        if (this.endPage) return;
+        this.page += 1;
+        this.startPage = false;
+    };
+
+    Slider.prototype.decrementPage = function () {
+        if (this.startPage) return;
+        this.page -= 1;
+        this.endPage = false;
+    };
+
+    Slider.prototype.pageNumber = function () {
+        return this.page;
     };
 
     return Slider;

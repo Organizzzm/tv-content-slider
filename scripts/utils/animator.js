@@ -11,11 +11,11 @@ Animator.prototype.start = function (start, end, callback, lastCallback) {
     var animateScroll = function () {
         currentTime += increment;
         var val = self.easeInOutQuad(currentTime, start, change, duration);
-        callback(val);
+        callback && callback(val);
         if (currentTime < duration) {
             setTimeout(animateScroll, increment);
         } else {
-            lastCallback();
+            lastCallback && lastCallback();
         }
     };
     animateScroll();

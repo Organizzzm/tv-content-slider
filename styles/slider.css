@@ -1,6 +1,6 @@
 #slider {
     position: relative;
-    width: 1024px;
+    min-width: 1024px;
     height: 768px;
     background: #e5e5e5;
     overflow: hidden;
@@ -11,10 +11,11 @@
 }
 
 .scroll {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    opacity: 0;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -25%;
+    bottom: -25%;
 }
 
 .row {
